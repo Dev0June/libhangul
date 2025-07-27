@@ -220,6 +220,9 @@ struct _HangulInputContext {
     unsigned int option_auto_reorder : 1;
     unsigned int option_combi_on_double_stroke : 1;
     unsigned int option_non_choseong_combi : 1;
+    
+    /* 갈마들이 기능을 위한 이전 키 추적 */
+    int prev_ascii;  
 };
 
 static void    hangul_buffer_push(HangulBuffer *buffer, ucschar ch);
@@ -774,6 +777,17 @@ hangul_ic_process_jaso(HangulInputContext *hic, ucschar ch)
 		}
 	    }
 	} else {
+	    // 갈마들이 조합 처리 (한손 키보드 전용)
+	    if (hic->keyboard != NULL && 
+	        hic->buffer.choseong != 0) {
+	        
+	        ucschar target_char = ch;
+	        if (hangul_is_cjamo(ch)) {
+	            // 호환 자모에서 유니코드 자모로 수동 변환
+	            if (ch >= 0x3131 && ch <= 0x314E) { target_char = ch - 0x3131 + 0x1100; }
+	        }	        
+	    }
+	    
 	    ucschar choseong = 0;
 	    if (hangul_is_choseong(hangul_ic_peek(hic))) {
 		choseong = hangul_ic_combine(hic, hic->buffer.choseong, ch);
@@ -1084,7 +1098,9 @@ hangul_ic_process(HangulInputContext *hic, int ascii)
     hic->preedit_string[0] = 0;
     hic->commit_string[0] = 0;
 
-    c = hangul_keyboard_map_to_char(hic->keyboard, hic->tableid, ascii);
+    /* 갈마들이 지원을 위한 동적 키보드 매핑 (갈마들이는 한손 키보드에서만 활성화) */
+    c = hangul_keyboard_get_mapping_galmadeuli(hic->keyboard, ascii, hic);
+      
     if (hic->on_translate != NULL)
 	hic->on_translate(hic, ascii, &c, hic->on_translate_data);
 
@@ -1096,6 +1112,7 @@ hangul_ic_process(HangulInputContext *hic, int ascii)
     switch (type) {
     case HANGUL_KEYBOARD_TYPE_JASO:
     case HANGUL_KEYBOARD_TYPE_JASO_YET:
+	hic->prev_ascii = ascii;
 	return hangul_ic_process_jaso(hic, c);
     case HANGUL_KEYBOARD_TYPE_ROMAJA:
 	return hangul_ic_process_romaja(hic, ascii, c);
@@ -1526,6 +1543,9 @@ hangul_ic_new(const char* keyboard)
     hic->option_auto_reorder = false;
     hic->option_combi_on_double_stroke = false;
     hic->option_non_choseong_combi = true;
+    
+    /* 갈마들이 기능을 위한 초기화 */
+    hic->prev_ascii = 0;
 
     hangul_ic_set_output_mode(hic, HANGUL_OUTPUT_SYLLABLE);
     hangul_ic_select_keyboard(hic, keyboard);
@@ -1632,4 +1652,134 @@ hangul_fini()
     int res;
     res = hangul_keyboard_list_fini();
     return res;
+}
+
+
+/* 초성 전용 키 정의 */
+static const char* left_hand_choseong_keys = "yuhjnmikl";  /* 왼손 9개 */
+static const char* right_hand_choseong_keys = "ertdfgcvb"; /* 오른손 9개 */
+
+static bool is_right_hand_keyboard(const HangulKeyboard* keyboard) {
+    /* 오른손 키보드 확인: r, e 키가 초성값을 가지는지 */
+    ucschar r_char = hangul_keyboard_map_to_char(keyboard, 0, 'r');
+    ucschar e_char = hangul_keyboard_map_to_char(keyboard, 0, 'e');
+    
+    /* 호환 자모를 유니코드 자모로 변환 후 체크 */
+    ucschar unicode_r = (r_char >= 0x3131 && r_char <= 0x318F) ? r_char - 0x3131 + 0x1100 : r_char;
+    ucschar unicode_e = (e_char >= 0x3131 && e_char <= 0x318F) ? e_char - 0x3131 + 0x1100 : e_char;
+    
+    return (hangul_is_choseong(unicode_r) && hangul_is_choseong(unicode_e));
+}
+
+static bool is_left_hand_keyboard(const HangulKeyboard* keyboard) {
+    /* 왼손 키보드 확인: u, i 키가 초성값을 가지는지 */
+    ucschar u_char = hangul_keyboard_map_to_char(keyboard, 0, 'u');
+    ucschar i_char = hangul_keyboard_map_to_char(keyboard, 0, 'i');
+    
+    /* 호환 자모를 유니코드 자모로 변환 후 체크 */
+    ucschar unicode_u = (u_char >= 0x3131 && u_char <= 0x318F) ? u_char - 0x3131 + 0x1100 : u_char;
+    ucschar unicode_i = (i_char >= 0x3131 && i_char <= 0x318F) ? i_char - 0x3131 + 0x1100 : i_char;
+    
+    return (hangul_is_choseong(unicode_u) && hangul_is_choseong(unicode_i));
+}
+
+static bool is_choseong_only_key(const HangulKeyboard* keyboard, int ascii) {
+    if (keyboard == NULL || ascii < 'a' || ascii > 'z') return false;
+    
+    /* 오른손 키보드 */
+    if (is_right_hand_keyboard(keyboard)) {
+        return strchr(right_hand_choseong_keys, ascii) != NULL;
+    }
+    /* 왼손 키보드 */
+    else if (is_left_hand_keyboard(keyboard)) {
+        return strchr(left_hand_choseong_keys, ascii) != NULL;
+    }
+    
+    return false;
+}
+
+/* 키보드 매핑 함수 - 갈마들이 지원 */
+ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, int ascii, HangulInputContext* hic)
+{
+    if (keyboard == NULL || hic == NULL) { return 0; }
+    if (ascii < 0 || ascii >= 128) { return 0; }
+    
+    /* 입력 위치에 따른 동적 테이블 선택 */
+    ucschar mapped_char;
+    int table_id = 0;  // 기본값 (자음/종성용)
+    
+    /* 현재 상태 확인 */
+    bool has_choseong = (hic->buffer.choseong != 0);
+    bool has_jungseong = (hic->buffer.jungseong != 0);
+    bool has_jongseong = (hic->buffer.jongseong != 0);
+    
+    /* 초성 전용 키 체크 - 강제로 새 글자 시작 */
+    bool is_force_choseong = is_choseong_only_key(keyboard, ascii);
+    
+    /* 중성 입력 위치라면 캡스락 테이블 사용 (모음용) */
+    if (!is_force_choseong && has_choseong && !has_jungseong && !has_jongseong) {
+        table_id = 1;  // capslock_layout (소문자 그대로 사용)
+    }
+    
+    mapped_char = hangul_keyboard_map_to_char(keyboard, table_id, ascii);
+    
+    /* 갈마들이 조건: 같은 키 반복이고 초성만 있는 상태 */
+    if (ascii == hic->prev_ascii && has_choseong && !has_jungseong && !has_jongseong) {
+        if (ascii >= 'a' && ascii <= 'z') {
+            /* 갈마들이 로직: 키에 자음(c1)과 모음(c2)이 모두 있으면 모음(c2) 선택 */
+            ucschar c1 = mapped_char; /* 자음 (소문자) */
+            char upper_ascii = ascii - 'a' + 'A';
+            ucschar c2 = hangul_keyboard_map_to_char(keyboard, table_id, upper_ascii); /* 모음 (대문자) */
+            
+            /* 호환 자모를 유니코드 자모로 변환 후 체크 */
+            ucschar unicode_c1 = c1;
+            ucschar unicode_c2 = c2;
+            
+            if (c1 >= 0x3131 && c1 <= 0x318F) { unicode_c1 = c1 - 0x3131 + 0x1100; }
+            if (c2 >= 0x3131 && c2 <= 0x318F) { unicode_c2 = c2 - 0x3131 + 0x1100; }
+            
+            /* 자음과 모음이 모두 유효하면 모음 선택 */
+            if (hangul_is_choseong(unicode_c1) && hangul_is_jungseong(unicode_c2)) { return c2; }
+        }
+    }
+    
+    /* 자음 + 자음 연속 입력 시 두 번째 자음을 모음으로 변환 */
+    if (has_choseong && !has_jungseong && !has_jongseong && ascii >= 'a' && ascii <= 'z') {
+        ucschar test_char = mapped_char;
+        ucschar unicode_test = test_char;
+        if (test_char >= 0x3131 && test_char <= 0x318F) {
+            unicode_test = test_char - 0x3131 + 0x1100;
+        }
+        
+        /* 입력된 문자가 자음이면 캡스락 테이블에서 모음 찾기 */
+        bool is_consonant = false;
+        if (is_right_hand_keyboard(keyboard)) {
+            /* 오른손: 초성 또는 종성 */
+            is_consonant = hangul_is_choseong(unicode_test) || hangul_is_jongseong(unicode_test);
+        } else {
+            /* 왼손: 초성만 */
+            is_consonant = hangul_is_choseong(unicode_test);
+        }
+        
+        if (is_consonant) {
+            char lookup_ascii = ascii;
+            if (is_right_hand_keyboard(keyboard)) {
+                /* 오른손: 대문자로 변환 */
+                lookup_ascii = ascii - 'a' + 'A';
+            }
+            /* 왼손: 소문자 그대로 */
+            ucschar vowel_char = hangul_keyboard_map_to_char(keyboard, 1, lookup_ascii);
+            ucschar unicode_vowel = vowel_char;
+            if (vowel_char >= 0x3131 && vowel_char <= 0x318F) {
+                unicode_vowel = vowel_char - 0x3131 + 0x1100;
+            }
+            
+            /* 캡스락 테이블에서 모음을 찾았으면 모음으로 변환 */
+            if (hangul_is_jungseong(unicode_vowel)) {
+                return vowel_char;
+            }
+        }
+    }
+    
+    return mapped_char;
 }

@@ -35,6 +35,8 @@ ucschar hangul_keyboard_combine(const HangulKeyboard* keyboard,
 ucschar hangul_keyboard_map_to_char(const HangulKeyboard* keyboard,
 	    int tableid, unsigned key);
 
+ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, int ascii, HangulInputContext* hic);
+		
 int hangul_keyboard_list_init(const char* user_defined_keyboard_path);
 int hangul_keyboard_list_fini();
 

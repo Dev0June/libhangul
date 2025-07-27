@@ -211,6 +211,31 @@ static const HangulKeyboard hangul_keyboard_ahn = {
     true
 };
 
+static const HangulCombination hangul_combination_1hand = {
+    countof(hangul_combination_table_1hand),
+    countof(hangul_combination_table_1hand),
+    (HangulCombinationItem*)hangul_combination_table_1hand,
+    true
+};
+
+static const HangulKeyboard hangul_keyboard_1hand_l = {
+    (char*)"1hand-left",
+    (char*)N_("One Hand Left"),
+    { (ucschar*)hangul_keyboard_1hand_l_table, (ucschar*)hangul_keyboard_table_capslock_l_layout, NULL, NULL },
+    { (HangulCombination*)&hangul_combination_1hand, NULL, NULL, NULL },
+    HANGUL_KEYBOARD_TYPE_JASO,
+    true
+};
+
+static const HangulKeyboard hangul_keyboard_1hand_r = {
+    (char*)"1hand-right",
+    (char*)N_("One Hand Right"),
+    { (ucschar*)hangul_keyboard_1hand_r_table, (ucschar*)hangul_keyboard_table_capslock_r_layout, NULL, NULL },
+    { (HangulCombination*)&hangul_combination_1hand, NULL, NULL, NULL },
+    HANGUL_KEYBOARD_TYPE_JASO,
+    true
+};
+
 static const HangulKeyboard* hangul_builtin_keyboards[] = {
     &hangul_keyboard_2,
     &hangul_keyboard_2y,
@@ -221,6 +246,8 @@ static const HangulKeyboard* hangul_builtin_keyboards[] = {
     &hangul_keyboard_32,
     &hangul_keyboard_romaja,
     &hangul_keyboard_ahn,
+    &hangul_keyboard_1hand_l,
+    &hangul_keyboard_1hand_r,
 };
 static const unsigned int hangul_builtin_keyboard_count = countof(hangul_builtin_keyboards);
 
