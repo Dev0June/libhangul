@@ -1764,7 +1764,7 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
             
             if (combined != 0) {
                 /* 조합 성공! 기존 초성을 조합된 결과로 교체 */
-                printf("DEBUG: 조합 성공! 기존 초성 0x%04x → 0x%04x로 교체\n", current_cho, combined);
+                // 조합 성공! 기존 초성을 조합된 결과로 교체
                 hic->buffer.choseong = combined;  // 버퍼의 초성 교체
                 return 0;  // 새로운 문자 추가하지 않음
             }
@@ -1796,8 +1796,7 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
             ucschar current_cho = hic->buffer.choseong;
             ucschar combined = hangul_keyboard_combine(keyboard, 0, current_cho, unicode_test);
             if (combined != 0) {
-                printf("DEBUG: 조합 성공 - current_cho=0x%04x + unicode_test=0x%04x = combined=0x%04x\n",
-                       current_cho, unicode_test, combined);
+                // 조합 성공 - 조합된 문자를 호환 자모로 변환해서 반환
                 /* 조합 성공! 조합된 문자를 호환 자모로 변환해서 반환 */
                 if (combined >= 0x1100 && combined <= 0x11FF) {
                     combined = combined - 0x1100 + 0x3131;  // 유니코드 → 호환 자모
