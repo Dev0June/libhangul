@@ -29,6 +29,10 @@ option(BUILD_SHARED_LIBS
     "Enable/Disable shared library build."
     ON
 )
+option(BUILD_TOOLS
+    "Enable/Disable building tools."
+    ON
+)
 
 option(ENABLE_EXTERNAL_KEYBOARDS
     "Enable/Disable external keyboard xml file loading feature (experimental)."
@@ -52,7 +56,9 @@ add_subdirectory(data/hanja)
 if(ENABLE_EXTERNAL_KEYBOARDS)
 add_subdirectory(data/keyboards)
 endif()
+if(BUILD_TOOLS)
 add_subdirectory(tools)
+endif()
 add_subdirectory(po)
 
 if(BUILD_TESTING)
