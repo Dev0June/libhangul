@@ -1743,11 +1743,41 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
         }
     }
     
+    /* 초성 + 자음 조합 처리 (ef → ㅊ 등) */
+    if (has_choseong && !has_jungseong && !has_jongseong) {
+        ucschar current_cho = hic->buffer.choseong;
+        
+        /* 기본 테이블만 체크 (조합용) */
+        for (int tid = 0; tid <= 0; tid++) {
+            ucschar test_char = hangul_keyboard_map_to_char(keyboard, tid, ascii);
+            if (test_char == 0) continue;
+            
+            /* 호환 자모를 유니코드 자모로 변환 */
+            ucschar unicode_test = test_char;
+            if (test_char >= 0x3131 && test_char <= 0x318F) {
+                unicode_test = test_char - 0x3131 + 0x1100;
+            }
+            
+            /* hangul_keyboard_combine 함수를 사용해서 조합 시도 */
+            ucschar combined = hangul_keyboard_combine(keyboard, 0, current_cho, unicode_test);
+            
+            
+            if (combined != 0) {
+                /* 조합 성공! 기존 초성을 조합된 결과로 교체 */
+                printf("DEBUG: 조합 성공! 기존 초성 0x%04x → 0x%04x로 교체\n", current_cho, combined);
+                hic->buffer.choseong = combined;  // 버퍼의 초성 교체
+                return 0;  // 새로운 문자 추가하지 않음
+            }
+        }
+    }
+    
     /* 자음 + 자음 연속 입력 시 두 번째 자음을 모음으로 변환 */
-    if (has_choseong && !has_jungseong && !has_jongseong && ascii >= 'a' && ascii <= 'z') {
+    if (has_choseong && !has_jungseong && !has_jongseong && ascii >= 'a' && ascii <= 'z') 
+	{
         ucschar test_char = mapped_char;
         ucschar unicode_test = test_char;
-        if (test_char >= 0x3131 && test_char <= 0x318F) {
+        if (test_char >= 0x3131 && test_char <= 0x318F) 
+		{
             unicode_test = test_char - 0x3131 + 0x1100;
         }
         
@@ -1762,6 +1792,20 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
         }
         
         if (is_consonant) {
+            /* 먼저 조합 시도 */
+            ucschar current_cho = hic->buffer.choseong;
+            ucschar combined = hangul_keyboard_combine(keyboard, 0, current_cho, unicode_test);
+            if (combined != 0) {
+                printf("DEBUG: 조합 성공 - current_cho=0x%04x + unicode_test=0x%04x = combined=0x%04x\n",
+                       current_cho, unicode_test, combined);
+                /* 조합 성공! 조합된 문자를 호환 자모로 변환해서 반환 */
+                if (combined >= 0x1100 && combined <= 0x11FF) {
+                    combined = combined - 0x1100 + 0x3131;  // 유니코드 → 호환 자모
+                }
+                return combined;
+            }
+            
+            /* 조합 실패시 모음으로 변환 시도 */
             char lookup_ascii = ascii;
             if (is_right_hand_keyboard(keyboard)) {
                 /* 오른손: 대문자로 변환 */
