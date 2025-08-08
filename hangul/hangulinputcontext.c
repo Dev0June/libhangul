@@ -784,7 +784,9 @@ hangul_ic_process_jaso(HangulInputContext *hic, ucschar ch)
 	        ucschar target_char = ch;
 	        if (hangul_is_cjamo(ch)) {
 	            // 호환 자모에서 유니코드 자모로 수동 변환
-	            if (ch >= 0x3131 && ch <= 0x314E) { target_char = ch - 0x3131 + 0x1100; }
+	            if (ch >= 0x3131 && ch <= 0x314E) { 
+					target_char = ch - 0x3131 + 0x1100; 
+				}
 	        }	        
 	    }
 	    
@@ -1100,6 +1102,9 @@ hangul_ic_process(HangulInputContext *hic, int ascii)
 
     /* 갈마들이 지원을 위한 동적 키보드 매핑 (갈마들이는 한손 키보드에서만 활성화) */
     c = hangul_keyboard_get_mapping_galmadeuli(hic->keyboard, ascii, hic);
+    
+    /* 갈마들이에서 조합 완료된 경우 (c=0) 추가 처리 없이 종료 */
+    if (c == 0) { return true;}
       
     if (hic->on_translate != NULL)
 	hic->on_translate(hic, ascii, &c, hic->on_translate_data);
@@ -1654,7 +1659,6 @@ hangul_fini()
     return res;
 }
 
-
 /* 초성 전용 키 정의 */
 static const char* left_hand_choseong_keys = "yuhjnmikl";  /* 왼손 9개 */
 static const char* right_hand_choseong_keys = "ertdfgcvb"; /* 오른손 9개 */
@@ -1694,7 +1698,6 @@ static bool is_choseong_only_key(const HangulKeyboard* keyboard, int ascii) {
     else if (is_left_hand_keyboard(keyboard)) {
         return strchr(left_hand_choseong_keys, ascii) != NULL;
     }
-    
     return false;
 }
 
@@ -1717,31 +1720,10 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
     bool is_force_choseong = is_choseong_only_key(keyboard, ascii);
     
     /* 중성 입력 위치라면 캡스락 테이블 사용 (모음용) */
-    if (!is_force_choseong && has_choseong && !has_jungseong && !has_jongseong) {
-        table_id = 1;  // capslock_layout (소문자 그대로 사용)
-    }
+    if (!is_force_choseong && has_choseong && !has_jungseong && !has_jongseong) { table_id = 1; }
+	// capslock_layout (소문자 그대로 사용)
     
     mapped_char = hangul_keyboard_map_to_char(keyboard, table_id, ascii);
-    
-    /* 갈마들이 조건: 같은 키 반복이고 초성만 있는 상태 */
-    if (ascii == hic->prev_ascii && has_choseong && !has_jungseong && !has_jongseong) {
-        if (ascii >= 'a' && ascii <= 'z') {
-            /* 갈마들이 로직: 키에 자음(c1)과 모음(c2)이 모두 있으면 모음(c2) 선택 */
-            ucschar c1 = mapped_char; /* 자음 (소문자) */
-            char upper_ascii = ascii - 'a' + 'A';
-            ucschar c2 = hangul_keyboard_map_to_char(keyboard, table_id, upper_ascii); /* 모음 (대문자) */
-            
-            /* 호환 자모를 유니코드 자모로 변환 후 체크 */
-            ucschar unicode_c1 = c1;
-            ucschar unicode_c2 = c2;
-            
-            if (c1 >= 0x3131 && c1 <= 0x318F) { unicode_c1 = c1 - 0x3131 + 0x1100; }
-            if (c2 >= 0x3131 && c2 <= 0x318F) { unicode_c2 = c2 - 0x3131 + 0x1100; }
-            
-            /* 자음과 모음이 모두 유효하면 모음 선택 */
-            if (hangul_is_choseong(unicode_c1) && hangul_is_jungseong(unicode_c2)) { return c2; }
-        }
-    }
     
     /* 초성 + 자음 조합 처리 (ef → ㅊ 등) */
     if (has_choseong && !has_jungseong && !has_jongseong) {
@@ -1761,12 +1743,11 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
             /* hangul_keyboard_combine 함수를 사용해서 조합 시도 */
             ucschar combined = hangul_keyboard_combine(keyboard, 0, current_cho, unicode_test);
             
-            
-            if (combined != 0) {
-                /* 조합 성공! 기존 초성을 조합된 결과로 교체 */
-                // 조합 성공! 기존 초성을 조합된 결과로 교체
-                hic->buffer.choseong = combined;  // 버퍼의 초성 교체
-                return 0;  // 새로운 문자 추가하지 않음
+			if (combined != 0) {
+                /* 조합 성공! 버퍼의 초성을 조합 결과로 업데이트하고 처리 완료 */
+                hic->buffer.choseong = combined;
+                hangul_ic_save_preedit_string(hic);
+                return 0;  // 0을 반환하여 추가 처리 방지
             }
         }
     }
@@ -1790,13 +1771,13 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
             /* 왼손: 초성만 */
             is_consonant = hangul_is_choseong(unicode_test);
         }
-        
+           
         if (is_consonant) {
             /* 먼저 조합 시도 */
             ucschar current_cho = hic->buffer.choseong;
             ucschar combined = hangul_keyboard_combine(keyboard, 0, current_cho, unicode_test);
+            
             if (combined != 0) {
-                // 조합 성공 - 조합된 문자를 호환 자모로 변환해서 반환
                 /* 조합 성공! 조합된 문자를 호환 자모로 변환해서 반환 */
                 if (combined >= 0x1100 && combined <= 0x11FF) {
                     combined = combined - 0x1100 + 0x3131;  // 유니코드 → 호환 자모
@@ -1823,6 +1804,5 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
             }
         }
     }
-    
     return mapped_char;
 }
