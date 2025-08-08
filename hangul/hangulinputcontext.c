@@ -1104,7 +1104,7 @@ hangul_ic_process(HangulInputContext *hic, int ascii)
     c = hangul_keyboard_get_mapping_galmadeuli(hic->keyboard, ascii, hic);
     
     /* 갈마들이에서 조합 완료된 경우 (c=0) 추가 처리 없이 종료 */
-    if (c == 0) { return true;}
+    if (c == 0) { return true; }
       
     if (hic->on_translate != NULL)
 	hic->on_translate(hic, ascii, &c, hic->on_translate_data);
@@ -1804,5 +1804,35 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
             }
         }
     }
+    
+    /* 중성 + 중성 조합 처리 (복합 중성: 와, 왜, 외, 워, 웨, 위, 얘) */
+    if (has_choseong && has_jungseong && !has_jongseong && ascii >= 'a' && ascii <= 'z') {
+        /* 입력된 키를 중성으로 변환 시도 */
+        char lookup_ascii = ascii;
+        if (is_right_hand_keyboard(keyboard)) {
+            lookup_ascii = ascii - 'a' + 'A';  /* 오른손: 대문자로 변환 */
+        }
+        
+        ucschar vowel_char = hangul_keyboard_map_to_char(keyboard, 1, lookup_ascii);
+        ucschar unicode_vowel = vowel_char;
+        if (vowel_char >= 0x3131 && vowel_char <= 0x318F) {
+            unicode_vowel = vowel_char - 0x3131 + 0x1100;
+        }
+        
+        /* 중성인지 확인 */
+        if (hangul_is_jungseong(unicode_vowel)) {
+            /* 현재 중성과 입력된 중성의 조합 시도 */
+            ucschar current_jung = hic->buffer.jungseong;
+            ucschar combined_jung = hangul_keyboard_combine(keyboard, 0, current_jung, unicode_vowel);
+            
+            if (combined_jung != 0) {
+                /* 중성 조합 성공! 버퍼의 중성을 조합 결과로 업데이트 */
+                hic->buffer.jungseong = combined_jung;
+                hangul_ic_save_preedit_string(hic);
+                return 0;  // 0을 반환하여 추가 처리 방지
+            }
+        }
+    }
+    
     return mapped_char;
 }
