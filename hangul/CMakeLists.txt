@@ -25,6 +25,7 @@ endif()
 
 set(hangul_PUBLIC_HEADERS
     hangul.h
+    ../english/enginputcontext.h
 )
 
 set(hangul_PRIVATE_HEADERS
@@ -41,6 +42,7 @@ add_library(hangul
     hangulinputcontext.c
     hangulkeyboard.c
     hanja.c
+    ../english/enginputcontext.c
 )
 
 target_compile_definitions(hangul
@@ -53,6 +55,7 @@ target_compile_definitions(hangul
 
 target_include_directories(hangul
     PRIVATE "${CMAKE_BINARY_DIR}"
+    PRIVATE "${CMAKE_SOURCE_DIR}/english"
 )
 
 if(ENABLE_EXTERNAL_KEYBOARDS)
