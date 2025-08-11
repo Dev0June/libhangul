@@ -294,45 +294,50 @@ void eng_ic_reset_typing_stats(EngInputContext* eic)
 static char get_right_hand_equivalent(int ascii)
 {
     switch (ascii) {
-        case 'q': return 'y';
-        case 'w': return 'u';
+        /* 키보드 반접기 미러링: qwert ↔ poiuy */
+        case 'q': return 'p';
+        case 'w': return 'o';
         case 'e': return 'i';
-        case 'r': return 'o';
-        case 't': return 'p';
-        case 'a': return 'h';
-        case 's': return 'j';
+        case 'r': return 'u';
+        case 't': return 'y';
+        
+        /* asdfg ↔ ;lkjh */
+        case 'a': return ';';
+        case 's': return 'l';
         case 'd': return 'k';
-        case 'f': return 'l';
-        case 'g': return ';';
-        case 'z': return 'n';
-        case 'x': return 'm';
+        case 'f': return 'j';
+        case 'g': return 'h';
+        
+        /* zxcvb ↔ /.,mn */
+        case 'z': return '/';
+        case 'x': return '.';
         case 'c': return ',';
-        case 'v': return '.';
-        case 'b': return '/';
+        case 'v': return 'm';
+        case 'b': return 'n';
         
         /* 대문자 처리 */
-        case 'Q': return 'Y';
-        case 'W': return 'U';
+        case 'Q': return 'P';
+        case 'W': return 'O';
         case 'E': return 'I';
-        case 'R': return 'O';
-        case 'T': return 'P';
-        case 'A': return 'H';
-        case 'S': return 'J';
+        case 'R': return 'U';
+        case 'T': return 'Y';
+        case 'A': return ':';
+        case 'S': return 'L';
         case 'D': return 'K';
-        case 'F': return 'L';
-        case 'G': return ':';
-        case 'Z': return 'N';
-        case 'X': return 'M';
+        case 'F': return 'J';
+        case 'G': return 'H';
+        case 'Z': return '?';
+        case 'X': return '>';
         case 'C': return '<';
-        case 'V': return '>';
-        case 'B': return '?';
+        case 'V': return 'M';
+        case 'B': return 'N';
         
-        /* 숫자 행 */
-        case '1': return '6';
-        case '2': return '7';
+        /* 숫자 행: 12345 ↔ 09876 */
+        case '1': return '0';
+        case '2': return '9';
         case '3': return '8';
-        case '4': return '9';
-        case '5': return '0';
+        case '4': return '7';
+        case '5': return '6';
         
         default: return ascii;
     }
@@ -342,45 +347,50 @@ static char get_right_hand_equivalent(int ascii)
 static char get_left_hand_equivalent(int ascii)
 {
     switch (ascii) {
-        case 'y': return 'q';
-        case 'u': return 'w';
+        /* 키보드 반접기 미러링: poiuy ↔ qwert */
+        case 'p': return 'q';
+        case 'o': return 'w';
         case 'i': return 'e';
-        case 'o': return 'r';
-        case 'p': return 't';
-        case 'h': return 'a';
-        case 'j': return 's';
+        case 'u': return 'r';
+        case 'y': return 't';
+        
+        /* ;lkjh ↔ asdfg */
+        case ';': return 'a';
+        case 'l': return 's';
         case 'k': return 'd';
-        case 'l': return 'f';
-        case ';': return 'g';
-        case 'n': return 'z';
-        case 'm': return 'x';
+        case 'j': return 'f';
+        case 'h': return 'g';
+        
+        /* /.,mn ↔ zxcvb */
+        case '/': return 'z';
+        case '.': return 'x';
         case ',': return 'c';
-        case '.': return 'v';
-        case '/': return 'b';
+        case 'm': return 'v';
+        case 'n': return 'b';
         
         /* 대문자 처리 */
-        case 'Y': return 'Q';
-        case 'U': return 'W';
+        case 'P': return 'Q';
+        case 'O': return 'W';
         case 'I': return 'E';
-        case 'O': return 'R';
-        case 'P': return 'T';
-        case 'H': return 'A';
-        case 'J': return 'S';
+        case 'U': return 'R';
+        case 'Y': return 'T';
+        case ':': return 'A';
+        case 'L': return 'S';
         case 'K': return 'D';
-        case 'L': return 'F';
-        case ':': return 'G';
-        case 'N': return 'Z';
-        case 'M': return 'X';
+        case 'J': return 'F';
+        case 'H': return 'G';
+        case '?': return 'Z';
+        case '>': return 'X';
         case '<': return 'C';
-        case '>': return 'V';
-        case '?': return 'B';
+        case 'M': return 'V';
+        case 'N': return 'B';
         
-        /* 숫자 행 */
-        case '6': return '1';
-        case '7': return '2';
+        /* 숫자 행: 09876 ↔ 12345 */
+        case '0': return '1';
+        case '9': return '2';
         case '8': return '3';
-        case '9': return '4';
-        case '0': return '5';
+        case '7': return '4';
+        case '6': return '5';
         
         default: return ascii;
     }
@@ -389,8 +399,8 @@ static char get_left_hand_equivalent(int ascii)
 /* 왼손 키인지 판단하는 함수 */
 static bool is_left_hand_key(int ascii)
 {
-    // 왼손 키들 (QWERTY 표준 배치)
-    char left_hand_keys[] = "qwertasdfgzxcvb1234567890`-=[]\\;',./~!@#$%^&*()_+{}|:\"<>?";
+    // 왼손 키들 (키보드 반접기 기준)
+    char left_hand_keys[] = "qwertasdfgzxcvb12345QWERTASDFGZXCVB!@#$%";
     
     for (int i = 0; left_hand_keys[i] != '\0'; i++) {
         if (ascii == left_hand_keys[i]) {
