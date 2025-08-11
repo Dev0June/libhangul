@@ -14,6 +14,7 @@
 /* 함수 선언 */
 static char get_right_hand_equivalent(int ascii);
 static char get_left_hand_equivalent(int ascii);
+static bool is_left_hand_key(int ascii);
 static char get_mirror_key_mapping(EngKeyboardType keyboard_type, int ascii);
 static void eng_ic_commit_char(EngInputContext* eic, char ch);
 static bool eng_ic_process_half_qwerty(EngInputContext* eic, int ascii);
@@ -385,6 +386,21 @@ static char get_left_hand_equivalent(int ascii)
     }
 }
 
+/* 왼손 키인지 판단하는 함수 */
+static bool is_left_hand_key(int ascii)
+{
+    // 왼손 키들 (QWERTY 표준 배치)
+    char left_hand_keys[] = "qwertasdfgzxcvb1234567890`-=[]\\;',./~!@#$%^&*()_+{}|:\"<>?";
+    
+    for (int i = 0; left_hand_keys[i] != '\0'; i++) {
+        if (ascii == left_hand_keys[i]) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
 /* 미러 키 매핑 메인 함수 */
 static char get_mirror_key_mapping(EngKeyboardType keyboard_type, int ascii)
 {
@@ -393,8 +409,16 @@ static char get_mirror_key_mapping(EngKeyboardType keyboard_type, int ascii)
             return get_right_hand_equivalent(ascii);
         case ENG_KEYBOARD_TYPE_HALF_QWERTY_RIGHT:
             return get_left_hand_equivalent(ascii);
+        case ENG_KEYBOARD_TYPE_HALF_STANDARD:
+            // 표준 Half-QWERTY: 입력된 키의 반대편 키 반환
+            // 왼손 키면 오른손 키를, 오른손 키면 왼손 키를 반환
+            if (is_left_hand_key(ascii)) {
+                return get_right_hand_equivalent(ascii);
+            } else {
+                return get_left_hand_equivalent(ascii);
+            }
         default:
-            return ascii; // 표준 키보드는 매핑 없음
+            return ascii;
     }
 }
 
@@ -417,13 +441,7 @@ bool eng_ic_process(EngInputContext* eic, int ascii)
     eic->commit_length = 0;
     memset(eic->commit_string, 0, sizeof(eic->commit_string));
     
-    /* 표준 키보드는 그대로 처리 */
-    if (eic->keyboard_type == ENG_KEYBOARD_TYPE_HALF_STANDARD) {
-        eng_ic_commit_char(eic, ascii);
-        return true;
-    }
-    
-    /* Half-QWERTY 처리 */
+    /* 모든 키보드 타입에서 Half-QWERTY 처리 */
     return eng_ic_process_half_qwerty(eic, ascii);
 }
 
@@ -609,13 +627,7 @@ bool eng_ic_process_key_down(EngInputContext* eic, int ascii)
         return true; // Space 키 자체는 출력하지 않음
     }
     
-    /* 표준 키보드는 그대로 처리 */
-    if (eic->keyboard_type == ENG_KEYBOARD_TYPE_HALF_STANDARD) {
-        eng_ic_commit_char(eic, ascii);
-        return true;
-    }
-    
-    /* Half-QWERTY 처리 */
+    /* 모든 키보드 타입에서 Half-QWERTY 키다운 처리 */
     return eng_ic_process_half_qwerty_keydown(eic, ascii);
 }
 

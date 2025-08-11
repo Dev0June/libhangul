@@ -9,7 +9,7 @@ extern "C" {
 
 /* 영문 키보드 타입 */
 typedef enum {
-    ENG_KEYBOARD_TYPE_HALF_STANDARD,    // 표준 양손 QWERTY
+    ENG_KEYBOARD_TYPE_HALF_STANDARD,    // 양손 Half-QWERTY
     ENG_KEYBOARD_TYPE_HALF_QWERTY_LEFT, // 왼손 Half-QWERTY
     ENG_KEYBOARD_TYPE_HALF_QWERTY_RIGHT // 오른손 Half-QWERTY
 } EngKeyboardType;
