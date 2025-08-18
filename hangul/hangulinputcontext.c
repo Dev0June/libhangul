@@ -1100,11 +1100,16 @@ hangul_ic_process(HangulInputContext *hic, int ascii)
     hic->preedit_string[0] = 0;
     hic->commit_string[0] = 0;
 
-    /* 갈마들이 지원을 위한 동적 키보드 매핑 (갈마들이는 한손 키보드에서만 활성화) */
-    c = hangul_keyboard_get_mapping_galmadeuli(hic->keyboard, ascii, hic);
-    
-    /* 갈마들이에서 조합 완료된 경우 (c=0) 추가 처리 없이 종료 */
-    if (c == 0) { return true; }
+    /* 갈마들이 지원을 위한 동적 키보드 매핑 (한손 키보드에서만 활성화) */
+    int type = hangul_keyboard_get_type(hic->keyboard);
+    if (type == HANGUL_KEYBOARD_TYPE_JASO || type == HANGUL_KEYBOARD_TYPE_JASO_YET) {
+        c = hangul_keyboard_get_mapping_galmadeuli(hic->keyboard, ascii, hic);
+        
+        /* 갈마들이에서 조합 완료된 경우 (c=0) 추가 처리 없이 종료 */
+        if (c == 0) { return true; }
+    } else {
+        c = hangul_keyboard_map_to_char(hic->keyboard, 0, ascii);
+    }
       
     if (hic->on_translate != NULL)
 	hic->on_translate(hic, ascii, &c, hic->on_translate_data);
@@ -1113,7 +1118,6 @@ hangul_ic_process(HangulInputContext *hic, int ascii)
 	return hangul_ic_backspace(hic);
     }
 
-    int type = hangul_keyboard_get_type(hic->keyboard);
     switch (type) {
     case HANGUL_KEYBOARD_TYPE_JASO:
     case HANGUL_KEYBOARD_TYPE_JASO_YET:
