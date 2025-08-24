@@ -21,6 +21,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #ifndef _WIN32
 #include <strings.h>
 #else
@@ -222,8 +223,59 @@ struct _HangulInputContext {
     unsigned int option_non_choseong_combi : 1;
     
     /* 갈마들이 기능을 위한 이전 키 추적 */
-    int prev_ascii;  
+    int prev_ascii;
+    
+    /* 갈마들이 확장 상태 변수들 */
+    int extended_state;     // E 변수 (500=ㅗ, 501=ㅜ, 502=ㅡ)
+    int position_state;     // T 변수 (1=첫번째위치, 2=두번째위치 등)
+    bool shift_state;       // P 변수 (Shift/대문자 상태)  
 };
+
+/* 갈마들이 확장 상수 정의 */
+enum {
+    HANGUL_E_STATE_NONE = 0,
+    HANGUL_E_STATE_O = 500,    // ㅗ 상태 (VirtualUnit 500)
+    HANGUL_E_STATE_U = 501,    // ㅜ 상태 (VirtualUnit 501)  
+    HANGUL_E_STATE_EU = 502,   // ㅡ 상태 (VirtualUnit 502)
+    HANGUL_E_STATE_F = 503,    // ㅓ 상태 (VirtualUnit 503)
+    HANGUL_E_STATE_AE = 504    // ㅐ 상태 (VirtualUnit 504)
+};
+
+enum {
+    HANGUL_POSITION_CHOSEONG = 1,   // 초성 위치
+    HANGUL_POSITION_JUNGSEONG = 2,  // 중성 위치  
+    HANGUL_POSITION_JONGSEONG = 3   // 종성 위치
+};
+
+// 갈마들이 패턴을 위한 키 그룹 정의
+static const char PATTERN1_KEYS[] = "bghjmntuvy";    // Pattern 1: T==1 || (E==HANGUL_E_STATE_O || E==HANGUL_E_STATE_U)
+static const char PATTERN2_KEYS[] = "cerv";          // Pattern 2: !T || E
+static const char NO_CONDITION_KEYS[] = "df";        // 조건 없음 (항상 동일)  
+static const char E_STATE_KEYS[] = "ceimruv";        // extended_state 설정 키들
+
+// 중성 유니코드 상수
+#define JUNGSEONG_O    0x1169  // ㅗ
+#define JUNGSEONG_U    0x116e  // ㅜ  
+#define JUNGSEONG_EU   0x1173  // ㅡ
+#define JUNGSEONG_I    0x1175  // ㅣ
+#define JONGSEONG_N    0x11ab  // ㄴ
+
+// 키 그룹 확인 함수들
+static bool is_pattern1_key(char ascii) {
+    return strchr(PATTERN1_KEYS, ascii) != NULL;
+}
+
+static bool is_pattern2_key(char ascii) {
+    return strchr(PATTERN2_KEYS, ascii) != NULL;
+}
+
+static bool is_no_condition_key(char ascii) {
+    return strchr(NO_CONDITION_KEYS, ascii) != NULL;
+}
+
+static bool is_e_state_key(char ascii) {
+    return strchr(E_STATE_KEYS, ascii) != NULL;
+}
 
 static void    hangul_buffer_push(HangulBuffer *buffer, ucschar ch);
 static ucschar hangul_buffer_pop (HangulBuffer *buffer);
@@ -557,6 +609,7 @@ hangul_ic_save_commit_string(HangulInputContext *hic)
     }
 
     hangul_buffer_clear(&hic->buffer);
+    hic->extended_state = 0;
 }
 
 static ucschar
@@ -1197,6 +1250,7 @@ hangul_ic_reset(HangulInputContext *hic)
     hic->flushed_string[0] = 0;
 
     hangul_buffer_clear(&hic->buffer);
+    hic->extended_state = 0;
 }
 
 /* append current preedit to the commit buffer.
@@ -1208,6 +1262,8 @@ hangul_ic_flush_internal(HangulInputContext *hic)
 
     hangul_ic_save_commit_string(hic);
     hangul_buffer_clear(&hic->buffer);
+    hic->extended_state = 0;
+    hic->position_state = HANGUL_POSITION_CHOSEONG; // 새 글자 시작시 초성 위치로 초기화
 }
 
 /**
@@ -1247,6 +1303,7 @@ hangul_ic_flush(HangulInputContext *hic)
     }
 
     hangul_buffer_clear(&hic->buffer);
+    hic->extended_state = 0;
 
     return hic->flushed_string;
 }
@@ -1555,11 +1612,15 @@ hangul_ic_new(const char* keyboard)
     
     /* 갈마들이 기능을 위한 초기화 */
     hic->prev_ascii = 0;
+    hic->extended_state = 0;
+    hic->position_state = HANGUL_POSITION_CHOSEONG;  // T=1 (초성 위치)
+    hic->shift_state = false; // P=0 (소문자)
 
     hangul_ic_set_output_mode(hic, HANGUL_OUTPUT_SYLLABLE);
     hangul_ic_select_keyboard(hic, keyboard);
 
     hangul_buffer_clear(&hic->buffer);
+    hic->extended_state = 0;
 
     return hic;
 }
@@ -1663,214 +1724,349 @@ hangul_fini()
     return res;
 }
 
-/* 초성 전용 키 정의 */
-static const char* left_hand_choseong_keys = "yuhjnmikl";  /* 왼손 9개 */
-static const char* right_hand_choseong_keys = "ertdfgcvb"; /* 오른손 9개 */
-
-static bool is_right_hand_keyboard(const HangulKeyboard* keyboard) {
-    /* 오른손 키보드 확인: r, e 키가 초성값을 가지는지 */
-    ucschar r_char = hangul_keyboard_map_to_char(keyboard, 0, 'r');
-    ucschar e_char = hangul_keyboard_map_to_char(keyboard, 0, 'e');
-    
-    /* 호환 자모를 유니코드 자모로 변환 후 체크 */
-    ucschar unicode_r = (r_char >= 0x3131 && r_char <= 0x318F) ? r_char - 0x3131 + 0x1100 : r_char;
-    ucschar unicode_e = (e_char >= 0x3131 && e_char <= 0x318F) ? e_char - 0x3131 + 0x1100 : e_char;
-    
-    return (hangul_is_choseong(unicode_r) && hangul_is_choseong(unicode_e));
-}
-
-static bool is_left_hand_keyboard(const HangulKeyboard* keyboard) {
-    /* 왼손 키보드 확인: u, i 키가 초성값을 가지는지 */
-    ucschar u_char = hangul_keyboard_map_to_char(keyboard, 0, 'u');
-    ucschar i_char = hangul_keyboard_map_to_char(keyboard, 0, 'i');
-    
-    /* 호환 자모를 유니코드 자모로 변환 후 체크 */
-    ucschar unicode_u = (u_char >= 0x3131 && u_char <= 0x318F) ? u_char - 0x3131 + 0x1100 : u_char;
-    ucschar unicode_i = (i_char >= 0x3131 && i_char <= 0x318F) ? i_char - 0x3131 + 0x1100 : i_char;
-    
-    return (hangul_is_choseong(unicode_u) && hangul_is_choseong(unicode_i));
-}
-
-static bool is_choseong_only_key(const HangulKeyboard* keyboard, int ascii) {
-    if (keyboard == NULL || ascii < 'a' || ascii > 'z') return false;
-    
-    /* 오른손 키보드 */
-    if (is_right_hand_keyboard(keyboard)) {
-        return strchr(right_hand_choseong_keys, ascii) != NULL;
-    }
-    /* 왼손 키보드 */
-    else if (is_left_hand_keyboard(keyboard)) {
-        return strchr(left_hand_choseong_keys, ascii) != NULL;
-    }
-    return false;
-}
-
 /* 키보드 매핑 함수 - 갈마들이 지원 */
 ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, int ascii, HangulInputContext* hic)
 {
     if (keyboard == NULL || hic == NULL) { return 0; }
     if (ascii < 0 || ascii >= 128) { return 0; }
     
-    /* 입력 위치에 따른 동적 테이블 선택 */
-    ucschar mapped_char;
-    int table_id = 0;  // 기본값 (자음/종성용)
-    
     /* 현재 상태 확인 */
     bool has_choseong = (hic->buffer.choseong != 0);
     bool has_jungseong = (hic->buffer.jungseong != 0);
     bool has_jongseong = (hic->buffer.jongseong != 0);
+    
+    printf("[GALMADEULI] 키 '%c' 입력 - 현재 상태: cho=%d jung=%d jong=%d prev_ascii=%c\n", 
+           ascii, has_choseong, has_jungseong, has_jongseong, 
+           hic->prev_ascii ? hic->prev_ascii : ' ');
+    
+    // 갈마들이 완성 후 상태 감지: prev_ascii=0이고 초성+중성이 있으면 갈마들이 완성 후
+    bool is_after_galmadeuli = (hic->prev_ascii == 0 && has_choseong && has_jungseong && !has_jongseong);
+    
+    if (is_after_galmadeuli) {
+        // 갈마들이 완성 후에는 position_state 업데이트 건너뛰기 (종성 입력 위치 유지)
+    } else if (!has_choseong && !has_jungseong && !has_jongseong) {
+        hic->position_state = HANGUL_POSITION_CHOSEONG; // 초성 위치
+    } else if (has_choseong && !has_jungseong && !has_jongseong) {
+        hic->position_state = HANGUL_POSITION_JUNGSEONG; // 중성 위치
+    } else if (has_choseong && has_jungseong && !has_jongseong) {
+        // ============================================================================
+        // 갈마들이 특별 처리 #1: t키 (*mth → *리 패턴)
+        // 조건: 't' 키 && 이전키='m' && 초성+중성 상태
+        // 동작: 중성조합 대신 현재 글자 커밋 후 새 글자 "ㄹ" 시작  
+        // 예시: fmth→우리, emth→주리, rmth→수리 등
+        // ============================================================================
+        if (ascii == 't' && hic->prev_ascii == 'm') {
+            // 현재 글자를 커밋
+            hangul_ic_save_commit_string(hic);
+            
+            // 새 글자로 ㄹ(t키의 기본 매핑) 시작
+            ucschar t_char = hangul_keyboard_map_to_char(keyboard, 0, ascii); // 기본 테이블에서 ㄹ
+            hangul_buffer_push(&hic->buffer, t_char); // 스택에 저장하여 backspace 지원
+            hic->position_state = HANGUL_POSITION_JUNGSEONG; // 중성 입력 위치
+            
+            return 0; // 추가 처리 없이 종료
+        } else {
+            // 복합중성 가능성 확인: 입력 키가 중성이고 복합 조합이 가능하면 중성 위치 유지
+            ucschar input_jung = hangul_keyboard_map_to_char(keyboard, 1, ascii); // 캡스락 테이블에서 중성 확인
+            if (input_jung != 0 && hangul_is_jungseong(input_jung)) {
+                ucschar combined = hangul_keyboard_combine(keyboard, 0, hic->buffer.jungseong, input_jung);
+                if (combined != 0) {
+                    hic->position_state = HANGUL_POSITION_JUNGSEONG; // 복합중성으로 중성 위치 유지
+                } else {
+                    hic->position_state = HANGUL_POSITION_JONGSEONG; // 종성 위치
+                    hic->extended_state = 0; // 종성 위치에서는 extended_state 리셋
+                }
+            } else {
+                hic->position_state = HANGUL_POSITION_JONGSEONG; // 종성 위치
+                hic->extended_state = 0; // 종성 위치에서는 extended_state 리셋
+            }
+        }
+    } else if (has_choseong && has_jungseong && has_jongseong) {
+        // 종성까지 완료된 상태: 새로운 글자 시작 (초성 위치)
+        hic->position_state = HANGUL_POSITION_CHOSEONG;
+    }
+     
+    /* 갈마들이 로직: 같은 키 반복 시 자음→모음 전환 */
+    if (ascii >= 'a' && ascii <= 'z') {
+        /* 갈마들이 조건: 같은 키 반복 + 초성만 있는 상태 */
+        bool is_galmadeuli = (ascii == hic->prev_ascii 
+			&& has_choseong && !has_jungseong && !has_jongseong);
         
-    /* 초성 전용 키 체크 - 강제로 새 글자 시작 */
-    bool is_force_choseong = is_choseong_only_key(keyboard, ascii);
+        /* 갈마들이 처리 (특수 조합보다 우선) */
+        if (is_galmadeuli) {
+            printf("갈마들이 분기 진입! ascii=%c prev_ascii=%c\n", ascii, hic->prev_ascii);
+            // 갈마들이: 캡스락 테이블(table_id=1)에서 중성 매핑
+            ucschar vowel_char = hangul_keyboard_map_to_char(keyboard, 1, ascii);
+            printf("vowel_char = 0x%04X\n", vowel_char);
+            if (vowel_char != 0 && hangul_is_jungseong(vowel_char)) {
+                hic->buffer.jungseong = vowel_char;
+                
+                // 갈마들이 완성 후 종성 입력 대기 (commit하지 않음)
+                hic->position_state = HANGUL_POSITION_JONGSEONG; // 종성 입력 위치
+                hic->prev_ascii = 0; // 갈마들이 완성 후 리셋
+                hangul_ic_save_preedit_string(hic);
+                printf("갈마들이 완성 후 return 0 실행\n");
+                return 0; // 갈마들이 처리 완료
+            } else {
+                printf("갈마들이 실패 (vowel_char 없거나 중성 아님), 특수 조합으로 계속\n");
+                // 갈마들이 실패 시 특수 조합 처리로 넘어감 (is_galmadeuli를 false로)
+                is_galmadeuli = false;
+            }
+        }
+        
+        // ============================================================================
+        // 갈마들이 특별 처리 #2: 3자리 패턴별 처리 (*e*, *m*)
+        // 조건: 초성+중성 상태 (종성 없음) && 이전 키에 따른 패턴 구분
+        // ============================================================================
+        bool prev_key_based_processed = false;
+        if (has_choseong && has_jungseong && !has_jongseong) {
+            bool is_first_position = (hic->position_state == HANGUL_POSITION_CHOSEONG);
+            bool has_o_or_u_state = (hic->extended_state == HANGUL_E_STATE_O 
+				|| hic->extended_state == HANGUL_E_STATE_U);
+            bool has_eu_state = (hic->extended_state == HANGUL_E_STATE_EU);
+            
+            printf("3자리 패턴 처리 상태: is_first=%d, has_o_or_u=%d, has_eu=%d, extended_state=%d\n", 
+                   is_first_position, has_o_or_u_state, has_eu_state, hic->extended_state);
+            
+            // *e* 패턴: T==1 || (E==HANGUL_E_STATE_O || E==HANGUL_E_STATE_U) → 복합중성 조합
+            if (is_first_position || has_o_or_u_state) {
+                printf("*e* 패턴 진입 ('%c' 키)\n", ascii);
+                ucschar current_jung = hic->buffer.jungseong;
+                ucschar input_char = (ascii == 'h') ? JUNGSEONG_I : hangul_keyboard_map_to_char(keyboard, 1, ascii);
+                
+                if (input_char != 0) {
+                    ucschar combined_jung = hangul_keyboard_combine(keyboard, 0, current_jung, input_char);
+                    printf("*e* 복합중성 조합: 현재=%04X + %04X = %04X\n", current_jung, input_char, combined_jung);
+                    
+                    if (combined_jung != 0) {
+                        hic->buffer.jungseong = combined_jung;
+                        hic->buffer.stack[hic->buffer.index] = combined_jung; // 스택 업데이트 (backspace 지원)
+                        hangul_ic_save_preedit_string(hic);
+                        prev_key_based_processed = true;
+                    }
+                }
+            }
+            // *m* 패턴: E==HANGUL_E_STATE_EU 
+            else if (has_eu_state) {
+                printf("*m* 패턴 진입 ('%c' 키)\n", ascii);
+                
+                if (ascii == 'h' || ascii == 'u') {
+                    ucschar jongseong = (ascii == 'h') ? JONGSEONG_N : 0x11a8; // ㄴ : ㄱ
+                    printf("*m* + %c → 종성 %s\n", ascii, (ascii == 'h') ? "ㄴ" : "ㄱ");
+                    hangul_buffer_push(&hic->buffer, jongseong);
+                    hic->position_state = HANGUL_POSITION_JONGSEONG;
+                    hangul_ic_save_preedit_string(hic);
+                    prev_key_based_processed = true;
+                }
+            }
+        }
+        
+        // ============================================================================
+        // 갈마들이 특별 처리 #2-2: 이전 키 기반 처리 완료 시 0 반환 (일반 입력 처리 우회)
+        // ============================================================================
+        if (prev_key_based_processed) {
+            printf("[GALMADEULI] '%c' 키 이전 키 기반 처리 완료, 반환값: 0\n", ascii);
+            return 0;
+        }
+        
+        /* 특수 조합 처리 (갈마들이 제외) */
+        if (!is_galmadeuli && hic->prev_ascii != 0) {
+            bool is_special_combination = false;
+            ucschar current_char = 0, input_char = 0, combined = 0;
+            
+            // 초성/중성/종성별 특수 조합 처리
+            if (has_choseong && !has_jungseong && !has_jongseong) {
+                current_char = hic->buffer.choseong;
+                input_char = hangul_keyboard_map_to_char(keyboard, 0, ascii);
+                if (input_char != 0 && hangul_is_choseong(input_char)) {
+                    combined = hangul_keyboard_combine(keyboard, 0, current_char, input_char);
+                    if (combined != 0) {
+                        hic->buffer.choseong = combined;
+                        is_special_combination = true;
+                        printf("초성 조합: %c%c → %04X\n", hic->prev_ascii, ascii, combined);
+                    }
+                }
+            } else if (has_choseong && has_jungseong && !has_jongseong) {
+                current_char = hic->buffer.jungseong;
+                input_char = hangul_keyboard_map_to_char(keyboard, 1, ascii);
+                if (input_char != 0 && hangul_is_jungseong(input_char)) {
+                    combined = hangul_keyboard_combine(keyboard, 0, current_char, input_char);
+                    if (combined != 0) {
+                        hic->buffer.jungseong = combined;
+                        is_special_combination = true;
+                        printf("중성 조합: %c%c → %04X\n", hic->prev_ascii, ascii, combined);
+                    }
+                }
+            } else if (has_choseong && has_jungseong && has_jongseong) {
+                current_char = hic->buffer.jongseong;
+                input_char = hangul_keyboard_map_to_char(keyboard, 0, ascii);
+                if (input_char != 0 && hangul_is_jongseong(input_char)) {
+                    combined = hangul_keyboard_combine(keyboard, 0, current_char, input_char);
+                    if (combined != 0) {
+                        hic->buffer.jongseong = combined;
+                        is_special_combination = true;
+                        printf("종성 조합: %c%c → %04X\n", hic->prev_ascii, ascii, combined);
+                    }
+                }
+            }
+            
+            if (is_special_combination) {
+                hangul_ic_save_preedit_string(hic);
+                return 0; // 특수 조합 처리 완료
+            }
+        }
+    }
+
+    /* 기본 매핑 (갈마들이와 특수 조합이 적용되지 않는 경우) */
+    int table_id = 0;  // 기본 테이블 (자음/종성용)
     
     /* 중성 입력 위치라면 캡스락 테이블 사용 (모음용) */
-    if (!is_force_choseong && has_choseong && !has_jungseong && !has_jongseong) { table_id = 1; }
-	// capslock_layout (소문자 그대로 사용)
-        
-    mapped_char = hangul_keyboard_map_to_char(keyboard, table_id, ascii);
+    bool is_jungseong_position = false;
     
-    /* 초성 + 자음 조합 처리 (ef → ㅊ 등) */
-    if (has_choseong && !has_jungseong && !has_jongseong) {
-        ucschar current_cho = hic->buffer.choseong;
-        
-        /* 기본 테이블만 체크 (조합용) */
-        for (int tid = 0; tid <= 0; tid++) {
-            ucschar test_char = hangul_keyboard_map_to_char(keyboard, tid, ascii);
-            if (test_char == 0) continue;
-            
-            /* 호환 자모를 유니코드 자모로 변환 */
-            ucschar unicode_test = test_char;
-            if (test_char >= 0x3131 && test_char <= 0x318F) {
-                unicode_test = test_char - 0x3131 + 0x1100;
-            }
-            
-            /* hangul_keyboard_combine 함수를 사용해서 조합 시도 */
-            ucschar combined = hangul_keyboard_combine(keyboard, 0, current_cho, unicode_test);
-            
-			if (combined != 0) {
-                /* 조합 성공! 버퍼의 초성을 조합 결과로 업데이트하고 처리 완료 */
-                hic->buffer.choseong = combined;
-                hangul_ic_save_preedit_string(hic);
-                return 0;  // 0을 반환하여 추가 처리 방지
-            }
+    // 갈마들이 후 종성 위치로 설정된 경우 중성 위치가 아님
+    if (hic->position_state == HANGUL_POSITION_JONGSEONG) {
+        is_jungseong_position = false;
+    }
+    // 기본 중성 위치: 초성 후 중성이 없는 경우
+    else if (has_choseong && !has_jungseong && !has_jongseong) {
+        is_jungseong_position = true;
+    }
+    // 특별 처리: 중성만 있는 경우에도 추가 중성 입력 허용 (초성 없이)
+    else if (!has_choseong && has_jungseong && !has_jongseong) {
+        ucschar input_jung = hangul_keyboard_map_to_char(keyboard, 1, ascii);
+        if (input_jung != 0 && hangul_is_jungseong(input_jung)) {
+            is_jungseong_position = true;
         }
     }
-    
-    /* 자음 + 자음 연속 입력 시 두 번째 자음을 모음으로 변환 */
-    if (has_choseong && !has_jungseong && !has_jongseong && ascii >= 'a' && ascii <= 'z') 
-	{
-        ucschar test_char = mapped_char;
-        ucschar unicode_test = test_char;
-        if (test_char >= 0x3131 && test_char <= 0x318F) 
-		{
-            unicode_test = test_char - 0x3131 + 0x1100;
-        }
+    // 복합 중성 위치: 이미 중성이 있지만 복합 중성 조합 가능한 경우
+    else if (has_choseong && has_jungseong && !has_jongseong) {
+        // 갈마들이로 완성된 경우는 복합 중성 조합 금지
+        bool is_after_galmadeuli = (hic->prev_ascii == 0); // 갈마들이 완성 후 prev_ascii가 0으로 리셋됨
         
-        /* 입력된 문자가 자음이면 캡스락 테이블에서 모음 찾기 */
-        bool is_consonant = false;
-        if (is_right_hand_keyboard(keyboard)) {
-            /* 오른손: 초성 또는 종성 */
-            is_consonant = hangul_is_choseong(unicode_test) || hangul_is_jongseong(unicode_test);
-        } else {
-            /* 왼손: 초성만 */
-            is_consonant = hangul_is_choseong(unicode_test);
-        }
-           
-        if (is_consonant) {
-            /* 먼저 조합 시도 */
-            ucschar current_cho = hic->buffer.choseong;
-            ucschar combined = hangul_keyboard_combine(keyboard, 0, current_cho, unicode_test);
+        if (!is_after_galmadeuli) {
+            // 현재 중성과 입력 키로 복합 중성 조합이 가능한지 확인 (bsearch 활용)
+            ucschar current_jung = hic->buffer.jungseong;
+            ucschar input_jung = hangul_keyboard_map_to_char(keyboard, 1, ascii); // 캡스락 테이블에서 중성 확인
             
-            if (combined != 0) {
-                /* 조합 성공! 조합된 문자를 호환 자모로 변환해서 반환 */
-                if (combined >= 0x1100 && combined <= 0x11FF) {
-                    combined = combined - 0x1100 + 0x3131;  // 유니코드 → 호환 자모
-                }
-                return combined;
-            }
-            
-            /* 조합 실패시 모음으로 변환 시도 */
-            char lookup_ascii = ascii;
-            if (is_right_hand_keyboard(keyboard)) {
-                /* 오른손: 대문자로 변환 */
-                lookup_ascii = ascii - 'a' + 'A';
-            }
-            /* 왼손: 소문자 그대로 */
-            ucschar vowel_char = hangul_keyboard_map_to_char(keyboard, 1, lookup_ascii);
-            
-            ucschar unicode_vowel = vowel_char;
-            if (vowel_char >= 0x3131 && vowel_char <= 0x318F) {
-                unicode_vowel = vowel_char - 0x3131 + 0x1100;
-            }
-            
-            /* 캡스락 테이블에서 모음을 찾았으면 모음으로 변환 */
-            if (hangul_is_jungseong(unicode_vowel)) {
-                return vowel_char;
-            }
-        }
-    }
-    
-    /* 모음 + 모음 처리 (중성 조합 또는 자음 변환) */
-    if (has_choseong && has_jungseong && !has_jongseong && ascii >= 'a' && ascii <= 'z') {
-        /* 캡스락 테이블에서 모음 찾기 */
-        char lookup_ascii = ascii;
-        if (is_right_hand_keyboard(keyboard)) {
-            lookup_ascii = ascii - 'a' + 'A';  /* 오른손: 대문자로 변환 */
-        }
-        
-        ucschar vowel_char = hangul_keyboard_map_to_char(keyboard, 1, lookup_ascii);
-        
-        ucschar unicode_vowel = vowel_char;
-        if (vowel_char >= 0x3131 && vowel_char <= 0x318F) {
-            unicode_vowel = vowel_char - 0x3131 + 0x1100;
-        }
-        
-        /* 입력된 문자가 모음이면 처리 */
-        if (hangul_is_jungseong(unicode_vowel)) {           
-            /* 이전 키의 원래 타입 확인 */
-            bool first_was_choseong = false;
-            bool first_was_jongseong = false;
-            
-            if (hic->prev_ascii >= 'a' && hic->prev_ascii <= 'z') {
-                ucschar orig_char = hangul_keyboard_map_to_char(keyboard, 0, hic->prev_ascii);
-                ucschar unicode_orig = orig_char;
-                if (orig_char >= 0x3131 && orig_char <= 0x318F) {
-                    unicode_orig = orig_char - 0x3131 + 0x1100;
-                }
-                first_was_choseong = hangul_is_choseong(unicode_orig);
-                first_was_jongseong = hangul_is_jongseong(unicode_orig);
-            }
-            
-            /* 종성+모음이면 자음으로 강제 변환, 초성+모음이면 조합 시도 */
-            if (first_was_jongseong) {
-            } else if (first_was_choseong) {
-                /* 먼저 중성 조합 시도 */
-                ucschar current_jung = hic->buffer.jungseong;
-                ucschar combined_jung = hangul_keyboard_combine(keyboard, 0, current_jung, unicode_vowel);
+            // hangul_combination_table_1hand에서 조합 가능 여부 확인 (bsearch 활용)
+            if (input_jung != 0 && hangul_is_jungseong(input_jung)) {
+                ucschar combined = hangul_keyboard_combine(keyboard, 0, current_jung, input_jung);
                 
-                if (combined_jung != 0) {
-                    /* 중성 조합 성공! 버퍼의 중성을 조합 결과로 업데이트 */
-                    hic->buffer.jungseong = combined_jung;
-                    hangul_ic_save_preedit_string(hic);
-                    return 0;  // 0을 반환하여 추가 처리 방지
+                if (combined != 0) {
+                    is_jungseong_position = true; // 조합 가능
                 } else {
+                    is_jungseong_position = false; // 조합 불가 시 다음 글자 초성으로 시작
                 }
-            }
-            
-            /* 조합 실패하거나 강제 변환이 필요한 경우 자음으로 변환 */
-            ucschar consonant_char = hangul_keyboard_map_to_char(keyboard, 0, ascii);
-            
-            ucschar unicode_consonant = consonant_char;
-            if (consonant_char >= 0x3131 && consonant_char <= 0x318F) {
-                unicode_consonant = consonant_char - 0x3131 + 0x1100;
-            }
-            
-            /* 기본 테이블에서 종성을 찾았으면 종성으로 변환 */
-            if (hangul_is_jongseong(unicode_consonant)) {
-                return consonant_char;
             }
         }
     }
     
+    // 종성 위치 확인: 초성+중성이 있고 종성이 없는 경우
+    bool is_jongseong_position = false;
+    if (has_choseong && has_jungseong && !has_jongseong) {
+        // 갈마들이로 완성된 경우는 종성 추가 금지
+        bool is_after_galmadeuli = (hic->prev_ascii == 0);
+        
+        if (!is_after_galmadeuli) {
+            ucschar input_jong = hangul_keyboard_map_to_char(keyboard, 0, ascii); // 기본 테이블에서 종성 확인
+            if (input_jong != 0 && hangul_is_jongseong(input_jong)) {
+                is_jongseong_position = true;
+            }
+        }
+    }
+    
+    // 우선순위: 복합중성 > 종성 > 기본중성 > 초성
+    // Shift 상태: table_id=1 (캡스락 테이블), table_id=0 (기본 테이블)    
+    if (is_jungseong_position) {
+        table_id = 1; // P=1 중성은 캡스락 테이블 사용
+        hic->shift_state = true;
+    } else if (is_jongseong_position) {
+        table_id = 0; // P=0 종성은 기본 테이블 사용
+        hic->shift_state = false;
+    } else {
+        table_id = 0; // P=0 초성은 기본 테이블 사용
+        hic->shift_state = false;
+    }
+    
+    // 대소문자 변환 로직: ascii^(P&1)<<5
+    int effective_ascii = ascii;
+    
+    // 공통 변수들
+    bool is_first_position = (hic->position_state == HANGUL_POSITION_CHOSEONG);
+    bool is_jungseong_position_state = (hic->position_state == HANGUL_POSITION_JUNGSEONG);
+    bool not_first_position = is_jungseong_position || is_jongseong_position;
+    bool has_extended_state = (hic->extended_state != HANGUL_E_STATE_NONE);
+    bool has_o_or_u_state = (hic->extended_state == HANGUL_E_STATE_O || hic->extended_state == HANGUL_E_STATE_U);
+    bool is_empty_state = (!has_choseong && !has_jungseong && !has_jongseong);
+    bool is_new_syllable_after_complete = (is_first_position && has_choseong && has_jungseong && has_jongseong);
+    bool is_jungseong_to_jongseong = (is_jungseong_position_state && has_choseong && has_jungseong && !has_jongseong);
+    
+    bool should_convert_case = false;
+    
+    // Pattern 1
+    if (is_pattern1_key(ascii)) {
+        should_convert_case = (((is_first_position || is_jungseong_position_state) 
+		&& !is_empty_state && !is_new_syllable_after_complete 
+		&& !is_jungseong_to_jongseong) || has_o_or_u_state);
+    }
+    // Pattern 2
+    else if (is_pattern2_key(ascii)) {
+        should_convert_case = (not_first_position || has_extended_state) 
+		&& !is_new_syllable_after_complete && !is_jungseong_to_jongseong;
+    }
+    // No Condition Keys (d, f) - 조건 없음 (항상 동일)
+    else if (is_no_condition_key(ascii)) {
+        should_convert_case = false; // 대소문자 변환하지 않음
+    }
+    
+    // 대소문자 변환 (영문자인 경우만)
+    if ((ascii >= 'A' && ascii <= 'Z') || (ascii >= 'a' && ascii <= 'z')) {
+        effective_ascii = ascii ^ ((should_convert_case & 1) << 5);
+    }
+    
+    // 대문자로 변환된 경우 기본 테이블 사용
+    int final_table_id = table_id;
+    if (effective_ascii != ascii && effective_ascii >= 'A' && effective_ascii <= 'Z') {
+        final_table_id = 0; // 대문자는 기본 테이블에서 찾기
+    }
+    
+    ucschar mapped_char = hangul_keyboard_map_to_char(keyboard, final_table_id, effective_ascii);
+    
+    // E 상태 설정: 갈마들이 패턴에 따라 키별 확장 상태 설정
+    if (is_jungseong_position) {
+        // Pattern 1 키들(b,f,g,h,j,m,n,r,t,u,v,y)은 특별한 extended_state 설정
+        if (is_pattern1_key(ascii)) {
+            if (mapped_char == JUNGSEONG_O) { // 중성 ㅗ
+                hic->extended_state = HANGUL_E_STATE_EU; // Pattern 1 → E=HANGUL_E_STATE_EU  
+            } else if (mapped_char == JUNGSEONG_U) { // 중성 ㅜ
+                hic->extended_state = HANGUL_E_STATE_EU; // Pattern 1 → E=HANGUL_E_STATE_EU
+            } else if (mapped_char == JUNGSEONG_EU) { // 중성 ㅡ
+                hic->extended_state = HANGUL_E_STATE_EU; // E=HANGUL_E_STATE_EU
+            }
+        }
+        // E 상태 키들(c,e,i,m,r,u,v)은 기본 extended_state 설정
+        else if (is_e_state_key(ascii)) {
+            if (mapped_char == JUNGSEONG_O) { // 중성 ㅗ
+                hic->extended_state = HANGUL_E_STATE_O; // E=HANGUL_E_STATE_O
+            } else if (mapped_char == JUNGSEONG_U) { // 중성 ㅜ
+                hic->extended_state = HANGUL_E_STATE_U; // E=HANGUL_E_STATE_U
+            } else if (mapped_char == JUNGSEONG_EU) { // 중성 ㅡ
+                hic->extended_state = HANGUL_E_STATE_EU; // E=HANGUL_E_STATE_EU
+            }
+        }
+        // 기타 키들은 기본 매핑
+        else {
+            if (mapped_char == JUNGSEONG_O) { // 중성 ㅗ
+                hic->extended_state = HANGUL_E_STATE_O; // E=HANGUL_E_STATE_O
+            } else if (mapped_char == JUNGSEONG_U) { // 중성 ㅜ
+                hic->extended_state = HANGUL_E_STATE_U; // E=HANGUL_E_STATE_U
+            } else if (mapped_char == JUNGSEONG_EU) { // 중성 ㅡ
+                hic->extended_state = HANGUL_E_STATE_EU; // E=HANGUL_E_STATE_EU
+            }
+        }
+    }
+    
+    printf("[GALMADEULI] '%c' 키 최종 반환값: 0x%04X (table_id=%d, effective_ascii=%c)\n", 
+           ascii, mapped_char, final_table_id, effective_ascii);
     return mapped_char;
 }

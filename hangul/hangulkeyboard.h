@@ -1786,32 +1786,32 @@ static const ucschar hangul_keyboard_1hand_l_table[] = {
     0x300f,     /* 0x3E greater: colon                               */
     0x003f,     /* 0x3F question: question mark                      */
     0x002a,     /* 0x40 at: multiplication sign                      */
-    0x0021,     /* 0x41 A: left white corner bracket                 */
-    0x1162,     /* 0x42 B: jungseong o                               */
-    0x003e,     /* 0x43 C: jungseong yu                              */
-    0x0023,     /* 0x44 D: choseong gieug                            */
-    0x005e,     /* 0x45 E: jungseong u                               */
-    0x1173,     /* 0x46 F: choseong ieung                            */
-    0x1175,     /* 0x47 G: jungseong a                               */
-    0x1161,     /* 0x48 H: jungseong i                               */
-    0x116e,     /* 0x49 I: dollar sign                               */
-    0x110b,     /* 0x4A J: jungseong eu                              */
-    0x1100,     /* 0x4B K: exclamation mark                          */
-    0x300e,     /* 0x4C L: at sign                                   */
-    0x116d,     /* 0x4D M: jungseong u                               */
-    0x1169,     /* 0x4E N: jungseong ae                              */
-    0x300a,     /* 0x4F O: percent sign                              */
-    0x300b,     /* 0x50 P: circumflex accent mark                    */
-    0x0024,     /* 0x51 Q: left double angle bracket                 */
-    0x1166,     /* 0x52 R: jungseong o                               */
-    0x0040,     /* 0x53 S: less-than sign                            */
-    0x1167,     /* 0x54 T: jungseong eo                              */
-    0x1169,     /* 0x55 U: jungseong e                               */
-    0x116e,     /* 0x56 V: jungseong yo                              */
-    0x0025,     /* 0x57 W: right double angle bracket                */
-    0x003c,     /* 0x58 X: greater-than sign                         */
-    0x1165,     /* 0x59 Y: jungseong yeo                             */
-    0x00b7,     /* 0x5A Z: right white corner bracket                */
+    0x0031,     /* 0x41 A: '1'                                       */
+    0x11b7,     /* 0x42 B: jongseong mieum (ㅁ)                      */
+    0x002e,     /* 0x43 C: '.'                                       */
+    0x0033,     /* 0x44 D: '3'                                       */
+    0x0036,     /* 0x45 E: '6'                                       */
+    0x11bc,     /* 0x46 F: jongseong ieung (ㅇ)                      */
+    0x11ab,     /* 0x47 G: jongseong nieun (ㄴ)                      */
+    0x1107,     /* 0x48 H: choseong bieub (ㅂ)                       */
+    0x110c,     /* 0x49 I: choseong jieuj (ㅈ)                       */
+    0x110b,     /* 0x4A J: choseong ieung (ㅇ)                       */
+    0x1100,     /* 0x4B K: choseong gieug (ㄱ)                       */
+    0x300c,     /* 0x4C L: left corner bracket (「)                  */
+    0x1103,     /* 0x4D M: choseong tikeut (ㄷ)                      */
+    0x1106,     /* 0x4E N: choseong mieum (ㅁ)                       */
+    0x3008,     /* 0x4F O: left angle bracket (〈)                   */
+    0x3009,     /* 0x50 P: right angle bracket (〉)                  */
+    0x0034,     /* 0x51 Q: '4'                                       */
+    0x11a8,     /* 0x52 R: jongseong gieug (ㄱ)                      */
+    0x0032,     /* 0x53 S: '2'                                       */
+    0x11af,     /* 0x54 T: jongseong rieul (ㄹ)                      */
+    0x1109,     /* 0x55 U: choseong sios (ㅅ)                        */
+    0x11bb,     /* 0x56 V: jongseong ssangsios (ㅆ)                  */
+    0x0035,     /* 0x57 W: '5'                                       */
+    0x002c,     /* 0x58 X: ','                                       */
+    0x1105,     /* 0x59 Y: choseong rieul (ㄹ)                       */
+    0x0030,     /* 0x5A Z: '0'                                       */
     0x005b,     /* 0x5B bracketleft: left bracket                    */
     0x005c,     /* 0x5C backslash: backslash                         */
     0x005d,     /* 0x5D bracketright: right bracket                  */
@@ -1973,7 +1973,7 @@ static const ucschar hangul_keyboard_table_capslock_l_layout[] = {
     0x116e,     /* 0x76 v: choseong digeud                           */
     0x0025,     /* 0x77 w: right angle bracket                       */
     0x003c,     /* 0x78 x: period                                    */
-    0x1165,     /* 0x79 y: jongseong rieul                           */
+    0x1167,     /* 0x79 y: jungseong yeo (갈마들이용)                 */
     0x00b7,     /* 0x7A z: right corner bracket                      */
     0x005b,     /* 0x7B braceleft: left brace                        */
     0x005c,     /* 0x7C bar: pipe                                    */
@@ -2181,30 +2181,30 @@ static const ucschar hangul_keyboard_table_capslock_r_layout[] = {
     0x002f,     /* 0x3F question: slash                              */
     0x203b,     /* 0x40 at: reference mark                           */
     0x300e,     /* 0x41 A: left white corner bracket                 */
-    0x1169,     /* 0x42 B: jungseong o                               */
-    0x1172,     /* 0x43 C: jungseong yu                              */
+    0x1106,     /* 0x42 B: choseong mieum (캡스락용)                  */
+    0x1102,     /* 0x43 C: choseong nieun (캡스락용)                  */
     0x1100,     /* 0x44 D: choseong gieug                            */
-    0x116e,     /* 0x45 E: jungseong u                               */
+    0x110c,     /* 0x45 E: choseong jieuj (캡스락용)                  */
     0x110b,     /* 0x46 F: choseong ieung                            */
-    0x1161,     /* 0x47 G: jungseong a                               */
-    0x1175,     /* 0x48 H: jungseong i                               */
-    0x0024,     /* 0x49 I: dollar sign                               */
-    0x1173,     /* 0x4A J: jungseong eu                              */
-    0x0021,     /* 0x4B K: exclamation mark                          */
-    0x0040,     /* 0x4C L: at sign                                   */
-    0x116e,     /* 0x4D M: jungseong u                               */
-    0x1162,     /* 0x4E N: jungseong ae                              */
-    0x0025,     /* 0x4F O: percent sign                              */
-    0x005e,     /* 0x50 P: circumflex accent mark                    */
-    0x300a,     /* 0x51 Q: left double angle bracket                 */
-    0x1169,     /* 0x52 R: jungseong o                               */
-    0x003c,     /* 0x53 S: less-than sign                            */
-    0x1165,     /* 0x54 T: jungseong eo                              */
-    0x1166,     /* 0x55 U: jungseong e                               */
-    0x116d,     /* 0x56 V: jungseong yo                              */
-    0x300b,     /* 0x57 W: right double angle bracket                */
-    0x003e,     /* 0x58 X: greater-than sign                         */
-    0x1167,     /* 0x59 Y: jungseong yeo                             */
+    0x1107,     /* 0x47 G: choseong bieub (캡스락용)                  */
+    0x11ab,     /* 0x48 H: jongseong nieun (캡스락용)                 */
+    0x0034,     /* 0x49 I: 4                                         */
+    0x11bc,     /* 0x4A J: jongseong ieung (캡스락용)                 */
+    0x0031,     /* 0x4B K: 1                                         */
+    0x0032,     /* 0x4C L: 2                                         */
+    0x11bb,     /* 0x4D M: jongseong ssang-sios (캡스락용)            */
+    0x11b7,     /* 0x4E N: jongseong mieum (캡스락용)                 */
+    0x0035,     /* 0x4F O: 5                                         */
+    0x0036,     /* 0x50 P: 6                                         */
+    0x3008,     /* 0x51 Q: left angle bracket                        */
+    0x1109,     /* 0x52 R: choseong sios (캡스락용)                   */
+    0x002c,     /* 0x53 S: comma                                     */
+    0x1105,     /* 0x54 T: choseong rieul (캡스락용)                  */
+    0x11a8,     /* 0x55 U: jongseong gieug (캡스락용)                 */
+    0x1103,     /* 0x56 V: choseong digeud (캡스락용)                 */
+    0x3009,     /* 0x57 W: right angle bracket                       */
+    0x002e,     /* 0x58 X: period                                    */
+    0x11af,     /* 0x59 Y: jongseong rieul (캡스락용)                 */
     0x300f,     /* 0x5A Z: right white corner bracket                */
     0x005b,     /* 0x5B bracketleft: left bracket                    */
     0x005c,     /* 0x5C backslash: backslash                         */
@@ -2213,30 +2213,30 @@ static const ucschar hangul_keyboard_table_capslock_r_layout[] = {
     0x005f,     /* 0x5F underscore: underscore                       */
     0x007e,     /* 0x60 quoteleft: tilde                             */
     0x300c,     /* 0x61 a: left corner bracket                       */
-    0x1106,     /* 0x62 b: choseong mieum                            */
-    0x1102,     /* 0x63 c: choseong nieun                            */
+    0x1169,     /* 0x62 b: jungseong o (갈마들이용)                   */
+    0x1172,     /* 0x63 c: jungseong yu (갈마들이용)                  */
     0x1100,     /* 0x64 d: choseong gieug                            */
     0x110c,     /* 0x65 e: choseong jieuj                            */
-    0x1100,     /* 0x66 f: choseong kiyeok                           */
-    0x1102,     /* 0x67 g: choseong nieun                            */
-    0x11ab,     /* 0x68 h: jongseong nieun                           */
-    0x0034,     /* 0x69 i: 4                                         */
-    0x11bc,     /* 0x6A j: jongseong ieung                           */
-    0x0031,     /* 0x6B k: 1                                         */
-    0x0032,     /* 0x6C l: 2                                         */
-    0x11bb,     /* 0x6D m: jongseong ssang-sios                      */
-    0x11b7,     /* 0x6E n: jongseong mieum                           */
+    0x110b,     /* 0x66 f: choseong ieung                            */
+    0x1161,     /* 0x67 g: jungseong a (갈마들이용)                   */
+    0x1175,     /* 0x68 h: jungseong i (갈마들이용)                   */
+    0x0024,     /* 0x69 i: dollar sign                               */
+    0x1173,     /* 0x6A j: jungseong eu (갈마들이용)                  */
+    0x0021,     /* 0x6B k: exclamation mark                          */
+    0x0040,     /* 0x6C l: at sign                                   */
+    0x116e,     /* 0x6D m: jungseong u (갈마들이용)                   */
+    0x1162,     /* 0x6E n: jungseong ae (갈마들이용)                  */
     0x0035,     /* 0x6F o: 5                                         */
     0x0036,     /* 0x70 p: 6                                         */
     0x3008,     /* 0x71 q: left angle bracket                        */
-    0x1109,     /* 0x72 r: choseong sios                             */
-    0x002c,     /* 0x73 s: comma                                     */
-    0x1105,     /* 0x74 t: choseong rieul                            */
-    0x11a8,     /* 0x75 u: jongseong gieug                           */
-    0x1103,     /* 0x76 v: choseong digeud                           */
+    0x1169,     /* 0x72 r: jungseong o (갈마들이용)                   */
+    0x003c,     /* 0x73 s: less-than sign                            */
+    0x1165,     /* 0x74 t: jungseong eo (갈마들이용)                  */
+    0x1166,     /* 0x75 u: jungseong e (갈마들이용)                   */
+    0x116d,     /* 0x76 v: jungseong yo (갈마들이용)                  */
     0x3009,     /* 0x77 w: right angle bracket                       */
     0x002e,     /* 0x78 x: period                                    */
-    0x11af,     /* 0x79 y: jongseong rieul                           */
+    0x1167,     /* 0x79 y: jungseong yeo (갈마들이용)                 */
     0x300d,     /* 0x7A z: right corner bracket                      */
     0x007b,     /* 0x7B braceleft: left brace                        */
     0x007c,     /* 0x7C bar: pipe                                    */
