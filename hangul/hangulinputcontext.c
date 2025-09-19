@@ -1729,15 +1729,21 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
 {
     if (keyboard == NULL || hic == NULL) { return 0; }
     if (ascii < 0 || ascii >= 128) { return 0; }
-    
+
+    int normalized_ascii = ascii;
+    if (normalized_ascii >= 'A' && normalized_ascii <= 'Z') {
+        normalized_ascii += ('a' - 'A');
+    }
+
+    int normalized_prev_ascii = hic->prev_ascii;
+    if (normalized_prev_ascii >= 'A' && normalized_prev_ascii <= 'Z') {
+        normalized_prev_ascii += ('a' - 'A');
+    }
+
     /* 현재 상태 확인 */
     bool has_choseong = (hic->buffer.choseong != 0);
     bool has_jungseong = (hic->buffer.jungseong != 0);
     bool has_jongseong = (hic->buffer.jongseong != 0);
-    
-    printf("[GALMADEULI] 키 '%c' 입력 - 현재 상태: cho=%d jung=%d jong=%d prev_ascii=%c\n", 
-           ascii, has_choseong, has_jungseong, has_jongseong, 
-           hic->prev_ascii ? hic->prev_ascii : ' ');
     
     // 갈마들이 완성 후 상태 감지: prev_ascii=0이고 초성+중성이 있으면 갈마들이 완성 후
     bool is_after_galmadeuli = (hic->prev_ascii == 0 && has_choseong && has_jungseong && !has_jongseong);
@@ -1755,14 +1761,16 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
         // 동작: 중성조합 대신 현재 글자 커밋 후 새 글자 "ㄹ" 시작  
         // 예시: fmth→우리, emth→주리, rmth→수리 등
         // ============================================================================
-        if (ascii == 't' && hic->prev_ascii == 'm') {
+        if (normalized_ascii == 't' && normalized_prev_ascii == 'm') {
             // 현재 글자를 커밋
             hangul_ic_save_commit_string(hic);
             
             // 새 글자로 ㄹ(t키의 기본 매핑) 시작
-            ucschar t_char = hangul_keyboard_map_to_char(keyboard, 0, ascii); // 기본 테이블에서 ㄹ
+            ucschar t_char = hangul_keyboard_map_to_char(keyboard, 0, normalized_ascii); // 기본 테이블에서 ㄹ
             hangul_buffer_push(&hic->buffer, t_char); // 스택에 저장하여 backspace 지원
             hic->position_state = HANGUL_POSITION_JUNGSEONG; // 중성 입력 위치
+            hangul_ic_save_preedit_string(hic);
+            hic->prev_ascii = ascii;
             
             return 0; // 추가 처리 없이 종료
         } else {
@@ -1787,17 +1795,15 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
     }
      
     /* 갈마들이 로직: 같은 키 반복 시 자음→모음 전환 */
-    if (ascii >= 'a' && ascii <= 'z') {
+    if (normalized_ascii >= 'a' && normalized_ascii <= 'z') {
         /* 갈마들이 조건: 같은 키 반복 + 초성만 있는 상태 */
-        bool is_galmadeuli = (ascii == hic->prev_ascii 
+        bool is_galmadeuli = (normalized_ascii == normalized_prev_ascii 
 			&& has_choseong && !has_jungseong && !has_jongseong);
         
         /* 갈마들이 처리 (특수 조합보다 우선) */
         if (is_galmadeuli) {
-            printf("갈마들이 분기 진입! ascii=%c prev_ascii=%c\n", ascii, hic->prev_ascii);
             // 갈마들이: 캡스락 테이블(table_id=1)에서 중성 매핑
             ucschar vowel_char = hangul_keyboard_map_to_char(keyboard, 1, ascii);
-            printf("vowel_char = 0x%04X\n", vowel_char);
             if (vowel_char != 0 && hangul_is_jungseong(vowel_char)) {
                 hic->buffer.jungseong = vowel_char;
                 
@@ -1805,10 +1811,8 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
                 hic->position_state = HANGUL_POSITION_JONGSEONG; // 종성 입력 위치
                 hic->prev_ascii = 0; // 갈마들이 완성 후 리셋
                 hangul_ic_save_preedit_string(hic);
-                printf("갈마들이 완성 후 return 0 실행\n");
                 return 0; // 갈마들이 처리 완료
             } else {
-                printf("갈마들이 실패 (vowel_char 없거나 중성 아님), 특수 조합으로 계속\n");
                 // 갈마들이 실패 시 특수 조합 처리로 넘어감 (is_galmadeuli를 false로)
                 is_galmadeuli = false;
             }
@@ -1825,18 +1829,13 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
 				|| hic->extended_state == HANGUL_E_STATE_U);
             bool has_eu_state = (hic->extended_state == HANGUL_E_STATE_EU);
             
-            printf("3자리 패턴 처리 상태: is_first=%d, has_o_or_u=%d, has_eu=%d, extended_state=%d\n", 
-                   is_first_position, has_o_or_u_state, has_eu_state, hic->extended_state);
-            
             // *e* 패턴: T==1 || (E==HANGUL_E_STATE_O || E==HANGUL_E_STATE_U) → 복합중성 조합
             if (is_first_position || has_o_or_u_state) {
-                printf("*e* 패턴 진입 ('%c' 키)\n", ascii);
                 ucschar current_jung = hic->buffer.jungseong;
-                ucschar input_char = (ascii == 'h') ? JUNGSEONG_I : hangul_keyboard_map_to_char(keyboard, 1, ascii);
-                
+                ucschar input_char = (normalized_ascii == 'h') ? JUNGSEONG_I : hangul_keyboard_map_to_char(keyboard, 1, ascii);
+
                 if (input_char != 0) {
                     ucschar combined_jung = hangul_keyboard_combine(keyboard, 0, current_jung, input_char);
-                    printf("*e* 복합중성 조합: 현재=%04X + %04X = %04X\n", current_jung, input_char, combined_jung);
                     
                     if (combined_jung != 0) {
                         hic->buffer.jungseong = combined_jung;
@@ -1848,11 +1847,8 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
             }
             // *m* 패턴: E==HANGUL_E_STATE_EU 
             else if (has_eu_state) {
-                printf("*m* 패턴 진입 ('%c' 키)\n", ascii);
-                
-                if (ascii == 'h' || ascii == 'u') {
-                    ucschar jongseong = (ascii == 'h') ? JONGSEONG_N : 0x11a8; // ㄴ : ㄱ
-                    printf("*m* + %c → 종성 %s\n", ascii, (ascii == 'h') ? "ㄴ" : "ㄱ");
+                if (normalized_ascii == 'h' || normalized_ascii == 'u') {
+                    ucschar jongseong = (normalized_ascii == 'h') ? JONGSEONG_N : 0x11a8; // ㄴ : ㄱ
                     hangul_buffer_push(&hic->buffer, jongseong);
                     hic->position_state = HANGUL_POSITION_JONGSEONG;
                     hangul_ic_save_preedit_string(hic);
@@ -1865,10 +1861,9 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
         // 갈마들이 특별 처리 #2-2: 이전 키 기반 처리 완료 시 0 반환 (일반 입력 처리 우회)
         // ============================================================================
         if (prev_key_based_processed) {
-            printf("[GALMADEULI] '%c' 키 이전 키 기반 처리 완료, 반환값: 0\n", ascii);
             return 0;
         }
-        
+
         /* 특수 조합 처리 (갈마들이 제외) */
         if (!is_galmadeuli && hic->prev_ascii != 0) {
             bool is_special_combination = false;
@@ -1883,7 +1878,6 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
                     if (combined != 0) {
                         hic->buffer.choseong = combined;
                         is_special_combination = true;
-                        printf("초성 조합: %c%c → %04X\n", hic->prev_ascii, ascii, combined);
                     }
                 }
             } else if (has_choseong && has_jungseong && !has_jongseong) {
@@ -1894,7 +1888,6 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
                     if (combined != 0) {
                         hic->buffer.jungseong = combined;
                         is_special_combination = true;
-                        printf("중성 조합: %c%c → %04X\n", hic->prev_ascii, ascii, combined);
                     }
                 }
             } else if (has_choseong && has_jungseong && has_jongseong) {
@@ -1905,7 +1898,6 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
                     if (combined != 0) {
                         hic->buffer.jongseong = combined;
                         is_special_combination = true;
-                        printf("종성 조합: %c%c → %04X\n", hic->prev_ascii, ascii, combined);
                     }
                 }
             }
@@ -2004,21 +1996,21 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
     bool should_convert_case = false;
     
     // Pattern 1
-    if (is_pattern1_key(ascii)) {
+    if (is_pattern1_key((char)normalized_ascii)) {
         should_convert_case = (((is_first_position || is_jungseong_position_state) 
 		&& !is_empty_state && !is_new_syllable_after_complete 
 		&& !is_jungseong_to_jongseong) || has_o_or_u_state);
     }
     // Pattern 2
-    else if (is_pattern2_key(ascii)) {
+    else if (is_pattern2_key((char)normalized_ascii)) {
         should_convert_case = (not_first_position || has_extended_state) 
 		&& !is_new_syllable_after_complete && !is_jungseong_to_jongseong;
     }
     // No Condition Keys (d, f) - 조건 없음 (항상 동일)
-    else if (is_no_condition_key(ascii)) {
+    else if (is_no_condition_key((char)normalized_ascii)) {
         should_convert_case = false; // 대소문자 변환하지 않음
     }
-    
+
     // 대소문자 변환 (영문자인 경우만)
     if ((ascii >= 'A' && ascii <= 'Z') || (ascii >= 'a' && ascii <= 'z')) {
         effective_ascii = ascii ^ ((should_convert_case & 1) << 5);
@@ -2035,7 +2027,7 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
     // E 상태 설정: 갈마들이 패턴에 따라 키별 확장 상태 설정
     if (is_jungseong_position) {
         // Pattern 1 키들(b,f,g,h,j,m,n,r,t,u,v,y)은 특별한 extended_state 설정
-        if (is_pattern1_key(ascii)) {
+        if (is_pattern1_key((char)normalized_ascii)) {
             if (mapped_char == JUNGSEONG_O) { // 중성 ㅗ
                 hic->extended_state = HANGUL_E_STATE_EU; // Pattern 1 → E=HANGUL_E_STATE_EU  
             } else if (mapped_char == JUNGSEONG_U) { // 중성 ㅜ
@@ -2045,7 +2037,7 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
             }
         }
         // E 상태 키들(c,e,i,m,r,u,v)은 기본 extended_state 설정
-        else if (is_e_state_key(ascii)) {
+        else if (is_e_state_key((char)normalized_ascii)) {
             if (mapped_char == JUNGSEONG_O) { // 중성 ㅗ
                 hic->extended_state = HANGUL_E_STATE_O; // E=HANGUL_E_STATE_O
             } else if (mapped_char == JUNGSEONG_U) { // 중성 ㅜ
@@ -2066,7 +2058,5 @@ ucschar hangul_keyboard_get_mapping_galmadeuli(const HangulKeyboard* keyboard, i
         }
     }
     
-    printf("[GALMADEULI] '%c' 키 최종 반환값: 0x%04X (table_id=%d, effective_ascii=%c)\n", 
-           ascii, mapped_char, final_table_id, effective_ascii);
     return mapped_char;
 }
