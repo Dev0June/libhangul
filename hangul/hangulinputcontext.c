@@ -277,6 +277,17 @@ static bool is_e_state_key(char ascii) {
     return strchr(E_STATE_KEYS, ascii) != NULL;
 }
 
+static bool hangul_keyboard_is_onehand(const HangulKeyboard* keyboard) {
+    if (keyboard == NULL) {
+        return false;
+    }
+
+    const HangulKeyboard* onehand_left = hangul_keyboard_list_get_keyboard("1hand-left");
+    const HangulKeyboard* onehand_right = hangul_keyboard_list_get_keyboard("1hand-right");
+
+    return keyboard == onehand_left || keyboard == onehand_right;
+}
+
 static void    hangul_buffer_push(HangulBuffer *buffer, ucschar ch);
 static ucschar hangul_buffer_pop (HangulBuffer *buffer);
 static ucschar hangul_buffer_peek(HangulBuffer *buffer);
@@ -610,6 +621,9 @@ hangul_ic_save_commit_string(HangulInputContext *hic)
 
     hangul_buffer_clear(&hic->buffer);
     hic->extended_state = 0;
+    hic->prev_ascii = 0;
+    hic->position_state = HANGUL_POSITION_CHOSEONG;
+    hic->shift_state = false;
 }
 
 static ucschar
@@ -1155,7 +1169,8 @@ hangul_ic_process(HangulInputContext *hic, int ascii)
 
     /* 갈마들이 지원을 위한 동적 키보드 매핑 (한손 키보드에서만 활성화) */
     int type = hangul_keyboard_get_type(hic->keyboard);
-    if (type == HANGUL_KEYBOARD_TYPE_JASO || type == HANGUL_KEYBOARD_TYPE_JASO_YET) {
+    bool enable_galmadeuli = hangul_keyboard_is_onehand(hic->keyboard);
+    if (enable_galmadeuli) {
         c = hangul_keyboard_get_mapping_galmadeuli(hic->keyboard, ascii, hic);
         
         /* 갈마들이에서 조합 완료된 경우 (c=0) 추가 처리 없이 종료 */
@@ -1251,6 +1266,9 @@ hangul_ic_reset(HangulInputContext *hic)
 
     hangul_buffer_clear(&hic->buffer);
     hic->extended_state = 0;
+    hic->prev_ascii = 0;
+    hic->position_state = HANGUL_POSITION_CHOSEONG;
+    hic->shift_state = false;
 }
 
 /* append current preedit to the commit buffer.
